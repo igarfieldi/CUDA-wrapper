@@ -1,5 +1,7 @@
 #pragma once
 
+#include <exception>
+#include <string>
 #include <cuda.h>
 #include <cuda_runtime.h>
 
