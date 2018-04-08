@@ -6,6 +6,7 @@
 #include <cuda.h>
 #include <cuda_runtime.h>
 #include "error.hpp"
+#include "properties.hpp"
 
 namespace cuda {
 
@@ -19,6 +20,9 @@ namespace cuda {
 		class device_base {
 		public:
 			static constexpr bool is_current = current;
+
+		private:
+			static constexpr size_t MAX_NAME_LEN = 256;
 
 		protected:
 			id_type m_id;
@@ -83,35 +87,39 @@ namespace cuda {
 				return m_hdl;
 			}
 
-			cudaDeviceProp get_properties() const {
-				cudaDeviceProp props;
+			scoped_device_switch<current> make_current_in_scope() const {
+				return scoped_device_switch<current>(*this);
+			}
+
+			dev::properties get_properties() const {
+				dev::properties props;
 				CUDA_TRY(cudaGetDeviceProperties(&props, id()), "Failed to get device properties");
 				return props;
 			}
 
-			const char *get_name() const {
+			std::string get_name() const {
 				static char buffer[MAX_NAME_LEN];
 				auto res = cuDeviceGetName(buffer, sizeof(buffer), m_hdl);
 				if (res != CUDA_SUCCESS) {
 					/* If we can't get the name directly, try the properties */
-					return get_properties().name;
+					return std::string(get_properties().name);
 				}
-				return buffer;
+				return std::string(buffer);
 			}
 
 			void reset() const {
-				scoped_device_switch<current> s(*this);
+				make_current_in_scope();
 				CUDA_TRY(cudaDeviceReset(), "Failed to reset device");
 			}
 
 			void synchronize() const {
-				scoped_device_switch<current> s(*this);
+				make_current_in_scope();
 				CUDA_TRY(cudaDeviceSynchronize(), "Failed to synchronize device");
 			}
 
 			size_t get_limit(cudaLimit limit) const {
-				scoped_device_switch<current> s(*this);
 				size_t val;
+				make_current_in_scope();
 				CUDA_TRY(cudaDeviceGetLimit(&val, limit), "Failed to get device limit");
 				return val;
 			}
@@ -122,14 +130,14 @@ namespace cuda {
 			}
 
 			flag_type get_flags() const {
-				scoped_device_switch<current> s(*this);
 				unsigned int flags;
+				make_current_in_scope();
 				CUDA_TRY(cudaGetDeviceFlags(&flags), "Failed to get device flags");
 				return flags;
 			}
 
 			void set_flags(flag_type flags) const {
-				scoped_device_switch<current> s(*this);
+				make_current_in_scope();
 				CUDA_TRY(cudaSetDeviceFlags(flags), "Failed to set device flags");
 			}
 
@@ -144,37 +152,6 @@ namespace cuda {
 			}
 		};
 
-		template < bool current = true >
-		class device;
-
-		/* This specialization is non-owning, and thus whenever an instance is needed one may create it */
-		template < >
-		class device<false> : public device_base<false> {
-		public:
-			explicit device(device::id_type id) : device_base(id) {}
-		};
-
-		/* This device specialization is owning: no duplicate instance may exist */
-		template < >
-		class device<true> : public device_base<true> {
-		private:
-			explicit device() : device_base(get_curr_id()) {}
-
-		public:
-			static device<true> &get() {
-				static device<true> instance;
-				return instance;
-			}
-
-			device<true> &make_current(const device<false> &next) {
-				if (device_base<true>::operator!=(next)) {
-					activate(next.id());
-					m_id = next.id();
-				}
-				return *this;
-			}
-		};
-
 		id_type count() {
 			id_type count;
 			CUDA_TRY(cudaGetDeviceCount(&count), "Failed to get device count");
@@ -182,5 +159,59 @@ namespace cuda {
 		}
 
 	} // namespace dev
+
+	template < bool current = true >
+	class device;
+
+	/* This specialization is non-owning, and thus whenever an instance is needed one may create it */
+	template < >
+	class device<false> : public dev::device_base<false> {
+	public:
+		device() : device_base(get_curr_id()) {}
+		explicit device(dev::id_type id) : device_base(id) {}
+
+		device<true> &make_current();
+	};
+
+	/* This device specialization is owning: no duplicate instance may exist */
+	template < >
+	class device<true> : public dev::device_base<true> {
+	private:
+		explicit device() : device_base(get_curr_id()) {}
+
+	public:
+		device(const device<true> &) = delete;
+		device(device<true> &&) = delete;
+		device<true> &operator=(const device<true> &) = delete;
+		device<true> &operator=(device<true> &&) = delete;
+
+		static device<true> &get() {
+			static device<true> instance;
+			return instance;
+		}
+
+		device<true> &make_current() noexcept {
+			/* Is a NOP, but needed for templated code to work */
+			return *this;
+		}
+
+		const device<true> &make_current() const noexcept {
+			/* Is a NOP, but needed for templated code to work */
+			return *this;
+		}
+
+		device<true> &make_current(const device<false> &next) {
+			if (device_base<true>::operator!=(next)) {
+				activate(next.id());
+				m_id = next.id();
+			}
+			return *this;
+		}
+	};
+
+	inline device<true> &device<false>::make_current() {
+		/* Switch to this device */
+		return device<true>::get().make_current(*this);
+	}
 
 } // namespace cuda
