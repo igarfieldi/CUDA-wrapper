@@ -38,11 +38,11 @@ int main()
 	try {
 
 		auto kernel = cuda::launch::make_kernel(addKernel);
-		cuda::device<true> &dev = cuda::device<true>::get();
+		const cuda::device &dev = cuda::device::current();
 
 		cuda::stream s;
 
-		std::cout << "CUDA device: " << dev.get_name() << '\n';
+		std::cout << "CUDA device: " << dev.get_properties().name << '\n';
 		std::cout << "Compute capability: " << dev.get_properties().compute_capability() << '\n';
 		std::cout << "Driver version: " << cuda::driver::version() << '\n';
 		std::cout << "Runtime version: " << cuda::runtime::version() << '\n';
@@ -76,7 +76,7 @@ int main()
 		std::cerr << e.what() << std::endl;
 	}
 
-	cuda::device<true>::get().reset();
+	cuda::device::current().reset();
 
     return 0;
 }

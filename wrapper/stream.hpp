@@ -16,7 +16,7 @@ namespace cuda {
 	
 	private:
 		cudaStream_t m_id;
-		device<false> m_device;
+		const device &m_device;
 
 		flag_type get_flags() const {
 			flag_type flags;
@@ -25,32 +25,32 @@ namespace cuda {
 		}
 
 	public:
-		stream() : m_id(), m_device() {
+		stream() : m_id(), m_device(device::current()) {
 			/* Don't need to make device current */
 			CUDA_TRY(cudaStreamCreate(&m_id), "Failed to create stream");
 		}
 
-		explicit stream(bool non_blocking) : m_id(), m_device() {
+		explicit stream(bool non_blocking) : m_id(), m_device(device::current()) {
 			CUDA_TRY(cudaStreamCreateWithFlags(&m_id, non_blocking ? cudaStreamNonBlocking : cudaStreamDefault),
 						"Failed to create stream with flags");
 		}
 
-		stream(bool non_blocking, priority_type priority) : m_id(), m_device() {
+		stream(bool non_blocking, priority_type priority) : m_id(), m_device(device::current()) {
 			CUDA_TRY(cudaStreamCreateWithPriority(&m_id, non_blocking ? cudaStreamNonBlocking : cudaStreamDefault, priority),
 						"Failed to create stream with flags and priority");
 		}
 
-		explicit stream(device<false> dev) : m_id(), m_device(dev) {
+		explicit stream(const device &dev) : m_id(), m_device(dev) {
 			auto scope = m_device.make_current_in_scope();
 			CUDA_TRY(cudaStreamCreate(&m_id), "Failed to create stream");
 		}
 
-		stream(device<false> dev, flag_type flags) : m_id(), m_device(dev) {
+		stream(const device &dev, flag_type flags) : m_id(), m_device(dev) {
 			auto scope = m_device.make_current_in_scope();
 			CUDA_TRY(cudaStreamCreateWithFlags(&m_id, flags), "Failed to create stream with flags");
 		}
 
-		stream(device<false> dev, flag_type flags, priority_type priority) : m_id(), m_device(dev) {
+		stream(const device &dev, flag_type flags, priority_type priority) : m_id(), m_device(dev) {
 			auto scope = m_device.make_current_in_scope();
 			CUDA_TRY(cudaStreamCreateWithPriority(&m_id, flags, priority), "Failed to create stream with flags and priority");
 		}
@@ -63,6 +63,10 @@ namespace cuda {
 
 		cudaStream_t id() const {
 			return m_id;
+		}
+
+		const device &device() const {
+			return m_device;
 		}
 
 		void enqueue(std::function<void(const stream &)> op) const {
