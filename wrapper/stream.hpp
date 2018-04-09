@@ -8,13 +8,15 @@
 
 namespace cuda {
 
-
 	class stream {
 	public:
+		using id_type = cudaStream_t;
 		using flag_type = unsigned int;
 		using priority_type = int;
 	
 	private:
+		static constexpr id_type default_id = nullptr;
+
 		cudaStream_t m_id;
 		const device &m_device;
 
@@ -24,22 +26,10 @@ namespace cuda {
 			return flags;
 		}
 
+		// Creates the default stream - doesn't need to be actually created
+		stream() : m_id(stream::default_id), m_device(device::current()) {}
+
 	public:
-		stream() : m_id(), m_device(device::current()) {
-			/* Don't need to make device current */
-			CUDA_TRY(cudaStreamCreate(&m_id), "Failed to create stream");
-		}
-
-		explicit stream(bool non_blocking) : m_id(), m_device(device::current()) {
-			CUDA_TRY(cudaStreamCreateWithFlags(&m_id, non_blocking ? cudaStreamNonBlocking : cudaStreamDefault),
-						"Failed to create stream with flags");
-		}
-
-		stream(bool non_blocking, priority_type priority) : m_id(), m_device(device::current()) {
-			CUDA_TRY(cudaStreamCreateWithPriority(&m_id, non_blocking ? cudaStreamNonBlocking : cudaStreamDefault, priority),
-						"Failed to create stream with flags and priority");
-		}
-
 		explicit stream(const device &dev) : m_id(), m_device(dev) {
 			auto scope = m_device.make_current_in_scope();
 			CUDA_TRY(cudaStreamCreate(&m_id), "Failed to create stream");
@@ -56,16 +46,27 @@ namespace cuda {
 		}
 
 		~stream() {
-			auto scope = m_device.make_current_in_scope();
-			/* TODO: we ignore failure for now because we can't throw an exception */
-			(void) cudaStreamDestroy(m_id);
+			if (m_id != stream::default_id) {
+				auto scope = m_device.make_current_in_scope();
+				/* TODO: we ignore failure for now because we can't throw an exception */
+				(void)cudaStreamDestroy(m_id);
+			}
 		}
 
-		cudaStream_t id() const {
+		static stream &default_stream() {
+			static stream def;
+			return def;
+		}
+
+		id_type id() const {
 			return m_id;
 		}
 
 		const device &device() const {
+			/* Default stream doesn't have a bound device */
+			if (m_id == stream::default_id) {
+				return device::current();
+			}
 			return m_device;
 		}
 

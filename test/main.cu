@@ -39,8 +39,7 @@ int main()
 
 		auto kernel = cuda::launch::make_kernel(addKernel);
 		const cuda::device &dev = cuda::device::current();
-
-		cuda::stream s;
+		auto s = cuda::stream::default_stream();
 
 		std::cout << "CUDA device: " << dev.get_properties().name << '\n';
 		std::cout << "Compute capability: " << dev.get_properties().compute_capability() << '\n';
@@ -48,6 +47,7 @@ int main()
 		std::cout << "Runtime version: " << cuda::runtime::version() << '\n';
 		std::cout << "Binary version: " << kernel.get_attributes().binary_version() << '\n';
 		std::cout << "PTX version: " << kernel.get_attributes().binary_version() << '\n';
+		std::cout << "Stream synchronizes: " << s.syncs_with_default() << '\n';
 
 		cuda::host::input_buffer<int> dev_a(arraySize);
 		cuda::host::input_buffer<int> dev_b(arraySize);
@@ -57,7 +57,6 @@ int main()
 		dev_b.copy_from(b);
 
 		// Launch a kernel on the GPU with one thread for each element.
-		//kernel.launch(dim3(1, 1, 1), dim3(arraySize, 1, 1), dev_c.data(), dev_a.data(), dev_b.data());
 		s.enqueue(kernel.stream_launch(dim3(1, 1, 1), dim3(arraySize, 1, 1), dev_c.data(), dev_a.data(), dev_b.data()));
 
 		// Synchronize and copy the results back from the GPU
