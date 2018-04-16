@@ -1,4 +1,5 @@
 #pragma once
+
 #include <exception>
 #include <initializer_list>
 #include <mutex>
@@ -17,14 +18,95 @@ namespace cuda {
 		using flag_type = unsigned int;
 
 	private:
-		static std::vector<device> m_devices;
 		static constexpr id_type default_id = 0;
-		static const device *m_curr;
-		static std::once_flag m_initialized;
-
 		id_type m_id;
 
 		device(id_type id) : m_id(id) {}
+
+		~device() {
+			// TODO: deal with error
+			id_type old;
+			cudaGetDevice(&old);
+			if (old != m_id) {
+				cudaSetDevice(m_id);
+			}
+			cudaDeviceReset();
+			if (old != m_id) {
+				cudaSetDevice(old);
+			}
+		}
+
+		// "Fixed" vector class to store our devices
+		template < class T >
+		class fixed_vector {
+		private:
+			T *m_data;
+			size_t m_size;
+			size_t m_capacity;
+
+		public:
+			explicit fixed_vector(size_t size) : m_data(reinterpret_cast<T*>(::operator new(size * sizeof(T)))),
+				m_capacity(size), m_size() {}
+
+			fixed_vector(const fixed_vector &) = delete;
+			fixed_vector(fixed_vector &&) = default;
+			fixed_vector &operator=(const fixed_vector &) = delete;
+			fixed_vector &operator=(fixed_vector &&) = default;
+
+			~fixed_vector() {
+				// Destroy the elements in reverse order
+				for (size_t i = 0; i < m_size; ++i) {
+					m_data[m_size - i - 1].~T();
+				}
+				::operator delete(m_data);
+			}
+
+			template < class... Args >
+			T &emplace_back(Args&&... args) {
+				if (m_size == m_capacity) {
+					throw std::out_of_range("Fixed vector is full");
+				}
+				new (&m_data[m_size]) T(std::forward<Args>(args)...);
+				return m_data[m_size++];
+			}
+
+			T &at(size_t index) {
+				if (index >= m_size) {
+					throw std::out_of_range("Invalid index");
+				}
+				return m_data[index];
+			}
+
+			const T &at(size_t index) const {
+				if (index >= m_size) {
+					throw std::out_of_range("Invalid index");
+				}
+				return m_data[index];
+			}
+
+			T &operator[](size_t index) noexcept {
+				return m_data[index];
+			}
+
+			const T &operator[](size_t index) const noexcept {
+				return m_data[index];
+			}
+		};
+
+		static fixed_vector<device> &m_devices() {
+			static fixed_vector<device> dev(device::count());
+			return dev;
+		}
+
+		static const device *&m_curr() {
+			static thread_local const device *curr;
+			return curr;
+		}
+
+		static std::once_flag &m_inited() {
+			static std::once_flag flag;
+			return flag;
+		}
 
 		static id_type get_curr_id() {
 			id_type id;
@@ -38,15 +120,16 @@ namespace cuda {
 
 		static void init_devices() {
 			// Add the available devices to our list
+			// We can't use vector or array because we don't have a copy constructor and no default constructor either
+			// Thus we'll emplace 
 			id_type id_count = device::count();
 			if (id_count < 1) {
 				throw error::cuda_error(cudaErrorInitializationError, "No CUDA device available");
 			}
 			for (id_type id = 0; id < id_count; ++id) {
-				//device::m_devices.emplace_back(id);
-				device::m_devices.push_back(device(id));
+				device::m_devices().emplace_back(id);
 			}
-			device::m_devices.at(0).make_current();
+			device::m_devices().at(0).make_current();
 		}
 
 		struct scoped_device_switch {
@@ -55,7 +138,7 @@ namespace cuda {
 			bool m_necessary;
 
 		public:
-			scoped_device_switch(const device &next) : m_prev(m_curr->id()), m_necessary(m_prev != next.id()) {
+			scoped_device_switch(const device &next) : m_prev(m_curr()->id()), m_necessary(m_prev != next.id()) {
 				if (m_necessary)
 					activate(next.id());
 			}
@@ -67,6 +150,11 @@ namespace cuda {
 		};
 
 	public:
+		device(const device &) = delete;
+		device(device &&) = delete;
+		device &operator=(const device &) = delete;
+		device &operator=(device &&) = delete;
+
 		static id_type count() {
 			id_type count;
 			CUDA_TRY(cudaGetDeviceCount(&count), "Failed to get device count");
@@ -74,15 +162,15 @@ namespace cuda {
 		}
 
 		static const device &current() {
-			std::call_once(m_initialized, init_devices);
+			std::call_once(m_inited(), init_devices);
 
-			return *m_curr;
+			return *m_curr();
 		}
 
 		static const device &get(id_type id) {
-			std::call_once(m_initialized, init_devices);
+			std::call_once(m_inited(), init_devices);
 
-			return m_devices.at(id);
+			return m_devices().at(id);
 		}
 
 		id_type id() const {
@@ -90,8 +178,8 @@ namespace cuda {
 		}
 
 		void make_current() const {
-			m_curr = this;
-			activate(m_curr->id());
+			m_curr() = this;
+			activate(m_curr()->id());
 		}
 
 		scoped_device_switch make_current_in_scope() const {
@@ -146,9 +234,5 @@ namespace cuda {
 			return !((*this) == r);
 		}
 	};
-
-	std::vector<device> device::m_devices;
-	const device *device::m_curr = nullptr;
-	std::once_flag device::m_initialized;
 
 } // namespace cuda

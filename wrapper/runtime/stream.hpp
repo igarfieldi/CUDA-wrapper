@@ -17,33 +17,40 @@ namespace cuda {
 	private:
 		static constexpr id_type default_id = nullptr;
 
-		cudaStream_t m_id;
-		const device &m_device;
-
 		flag_type get_flags() const {
 			flag_type flags;
 			CUDA_TRY(cudaStreamGetFlags(m_id, &flags), "Failed to get stream flags");
 			return flags;
 		}
 
+		cudaStream_t m_id;
+		const device &m_device;
+
 		// Creates the default stream - doesn't need to be actually created
-		stream() : m_id(stream::default_id), m_device(device::current()) {}
+		explicit stream() : m_id(stream::default_id), m_device(device::current()) {}
 
 	public:
 		explicit stream(const device &dev) : m_id(), m_device(dev) {
-			auto scope = m_device.make_current_in_scope();
+			auto scope = dev.make_current_in_scope();
 			CUDA_TRY(cudaStreamCreate(&m_id), "Failed to create stream");
 		}
 
-		stream(const device &dev, flag_type flags) : m_id(), m_device(dev) {
-			auto scope = m_device.make_current_in_scope();
-			CUDA_TRY(cudaStreamCreateWithFlags(&m_id, flags), "Failed to create stream with flags");
+		stream(const device &dev, bool non_blocking) : m_id(), m_device(dev) {
+			auto scope = dev.make_current_in_scope();
+			CUDA_TRY(cudaStreamCreateWithFlags(&m_id, non_blocking ? cudaStreamNonBlocking : cudaStreamDefault),
+						"Failed to create stream with flags");
 		}
 
-		stream(const device &dev, flag_type flags, priority_type priority) : m_id(), m_device(dev) {
-			auto scope = m_device.make_current_in_scope();
-			CUDA_TRY(cudaStreamCreateWithPriority(&m_id, flags, priority), "Failed to create stream with flags and priority");
+		stream(const device &dev, bool non_blocking, priority_type priority) : m_id(), m_device(dev) {
+			auto scope = dev.make_current_in_scope();
+			CUDA_TRY(cudaStreamCreateWithPriority(&m_id, non_blocking ? cudaStreamNonBlocking : cudaStreamDefault,
+						priority), "Failed to create stream with flags and priority");
 		}
+
+		stream(const stream &) = delete;
+		stream(stream &&) = default;
+		stream &operator=(const stream &) = delete;
+		stream &operator=(stream &&) = default;
 
 		~stream() {
 			if (m_id != stream::default_id) {
@@ -53,8 +60,8 @@ namespace cuda {
 			}
 		}
 
-		static stream &default_stream() {
-			static stream def;
+		static const stream &default_stream() {
+			static thread_local stream def;
 			return def;
 		}
 
@@ -71,12 +78,12 @@ namespace cuda {
 		}
 
 		void enqueue(std::function<void(const stream &)> op) const {
-			auto scope = m_device.make_current_in_scope();
+			auto scope = this->device().make_current_in_scope();
 			op(*this);
 		}
 
 		void synchronize() const {
-			auto scope = m_device.make_current_in_scope();
+			auto scope = this->device().make_current_in_scope();
 			CUDA_TRY(cudaStreamSynchronize(m_id), "Failed to synchronize stream");
 		}
 

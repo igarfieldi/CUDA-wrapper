@@ -64,9 +64,11 @@ namespace cuda {
 				return attr;
 			}
 
+#if __CUDACC_VER_MAJOR__ >= 9
 			void set_attributes(const cudaFuncAttribute &attr, attribute_type val) const {
 				CUDA_TRY(cudaFuncSetAttribute(m_func, attr, val), "Failed to set function attributes");
 			}
+#endif
 
 			void set_cache_config(cudaFuncCache config) const {
 				CUDA_TRY(cudaFuncSetCacheConfig(m_func, config), "Failed to set function cache configuration");
