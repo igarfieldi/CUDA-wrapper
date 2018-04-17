@@ -3,6 +3,7 @@
 #include "device_launch_parameters.h"
 #include "runtime/device.hpp"
 #include "runtime/error.hpp"
+#include "runtime/event.hpp"
 #include "runtime/kernel.cu"
 #include "runtime/memory.hpp"
 #include "runtime/version.hpp"
@@ -53,28 +54,34 @@ void test_device(const cuda::device &dev, const cuda::host::pinned_buffer<int> &
 	constexpr unsigned int block_size = 1024;
 	constexpr unsigned int grid_size = 1024;
 	constexpr unsigned int elems_per_thread = 5;
-	auto c = cuda::host::pinned_buffer<int>(array_size, false, false, true);
 
-	// Add vectors in parallel.
 	try {
+		auto c = cuda::host::pinned_buffer<int>(array_size, false, false, true);
+
 		dev.make_current();
 		auto kernel = cuda::launch::make_kernel(addKernel);
 		//auto &s1 = cuda::stream::default_stream();
 		auto s1 = cuda::stream(dev, true);
 		auto s2 = cuda::stream(dev, true);
 
+		auto evt0 = cuda::event(dev);
+		evt0.record(s1);
 		cuda::host::input_buffer<int> dev_a1(array_size);
 		cuda::host::input_buffer<int> dev_b1(array_size);
 		cuda::host::output_buffer<int> dev_c1(array_size);
 		cuda::host::input_buffer<int> dev_a2(array_size);
 		cuda::host::input_buffer<int> dev_b2(array_size);
 		cuda::host::output_buffer<int> dev_c2(array_size);
+		auto evt1 = cuda::event(s1);
 
 		s1.enqueue(dev_a1.copy_h2d_async(a));
 		s1.enqueue(dev_b1.copy_h2d_async(b));
+		auto evt2 = cuda::event(s1);
 		s1.enqueue(kernel.stream_launch(dim3(grid_size, 1, 1), dim3(block_size, 1, 1),
 			dev_c1.data(), dev_a1.data(), dev_b1.data(), array_size, elems_per_thread));
+		auto evt3 = cuda::event(s1);
 		s1.enqueue(dev_c1.copy_d2h_async(c));
+		auto evt4 = cuda::event(s1);
 
 		s2.enqueue(dev_a2.copy_h2d_async(a));
 		s2.enqueue(dev_b2.copy_h2d_async(b));
@@ -82,8 +89,16 @@ void test_device(const cuda::device &dev, const cuda::host::pinned_buffer<int> &
 			dev_c2.data(), dev_a2.data(), dev_b2.data(), array_size, elems_per_thread));
 		s2.enqueue(dev_c2.copy_d2h_async(c));
 
+
 		// Synchronize (wait for everything to finish executing)
 		dev.synchronize();
+		std::cout << '\t' << dev.get_properties().name << " (" << dev.used_mem() / 0x100000 << "MB / "
+			<< dev.total_mem() / 0x100000 << "MB): "
+			<< evt4.elapsed_time(evt0) << "ms ("
+			<< evt1.elapsed_time(evt0) << "ms|"
+			<< evt2.elapsed_time(evt1) << "ms|"
+			<< evt3.elapsed_time(evt2) << "ms|"
+			<< evt4.elapsed_time(evt3) << "ms)" << std::endl;
 	}
 	catch (const std::exception &e) {
 		std::cout.flush();
@@ -193,15 +208,15 @@ int main()
 {
 	// Warm-up run
 	CU_SAFE_CALL(cuInit(0));
-	std::cout << "Warming up CUDA..." << std::endl;
-	test_native();
+	//std::cout << "Warming up CUDA..." << std::endl;
+	//test_native();
 
 	std::cout << "Running benchmark..." << std::endl;
 	auto timer = cpputils::Timer<>();
 	test_native();
-	std::cout << "\tNative completion time: " << timer.duration<>() << "ms" << std::endl;
+	std::cout << "Native completion time: " << timer.duration<>() << "ms" << std::endl;
 	timer.reset();
 	test();
-	std::cout << "\tLibrary completion time: " << timer.duration<>() << "ms" << std::endl;
+	std::cout << "Library completion time: " << timer.duration<>() << "ms" << std::endl;
     return 0;
 }

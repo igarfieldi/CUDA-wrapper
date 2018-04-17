@@ -1,9 +1,9 @@
-cmake_minimum_required(VERSION 3.8 FATAL_ERROR)
+cmake_minimum_required(VERSION 3.9 FATAL_ERROR)
 project(CUDA-wrapper LANGUAGES CXX CUDA)
 
 set(DESIRED_CUDA_VERSION 8.0)
-set(COMPUTE_CAPABILITY "compute_20")
 set(ARCHITECTURE "compute_20")
+set(CODE_ARCH "compute_20,sm_20")
 
 # Look for CUDA
 find_package(CUDA ${DESIRED_CUDA_VERSION} EXACT QUIET)
@@ -18,13 +18,14 @@ else(CUDA_FOUND)
 endif()
 
 # Set the desired codegen parameters
-string(APPEND CUDA_NVCC_FLAGS " -arch=${COMPUTE_CAPABILITY} -code=${ARCHITECTURE}")
+string(APPEND CUDA_NVCC_FLAGS " -arch=${ARCHITECTURE} -code=${CODE_ARCH}")
 
 # Actual library
 cuda_add_library(cuda-wrapper STATIC
 	wrapper/common.hpp
 	wrapper/runtime/device.hpp
 	wrapper/runtime/error.hpp
+	wrapper/runtime/event.hpp
 	wrapper/runtime/kernel.cu
 	wrapper/runtime/memory.hpp
 	wrapper/runtime/properties.hpp

@@ -4,6 +4,7 @@
 #include <initializer_list>
 #include <mutex>
 #include <string>
+#include <tuple>
 #include <vector>
 #include <cuda.h>
 #include <cuda_runtime.h>
@@ -190,6 +191,25 @@ namespace cuda {
 			dev::properties props;
 			CUDA_TRY(cudaGetDeviceProperties(&props, id()), "Failed to get device properties");
 			return props;
+		}
+
+		std::pair<size_t, size_t> memory() const {
+			size_t free, total;
+			make_current_in_scope();
+			CUDA_TRY(cudaMemGetInfo(&free, &total), "Failed to get device memory");
+			return { free, total };
+		}
+
+		size_t free_mem() const {
+			return this->memory().first;
+		}
+
+		size_t total_mem() const {
+			return this->memory().second;
+		}
+
+		size_t used_mem() const {
+			return this->total_mem() - this->free_mem();
 		}
 
 		void reset() const {
