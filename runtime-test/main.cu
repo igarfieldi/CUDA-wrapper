@@ -8,7 +8,6 @@
 #include "runtime/memory.hpp"
 #include "runtime/version.hpp"
 #include "timer.hpp"
-
 #include <iostream>
 #include <functional>
 #include <thread>
@@ -154,7 +153,7 @@ void test_device_native(int devno, int *a, int *b, const unsigned int array_size
 	CU_SAFE_CALL(cuCtxDestroy(ctx));
 }
 
-void test() {
+void test_threaded() {
 	constexpr unsigned int array_size = 12000000;
 	auto a = cuda::host::pinned_buffer<int>(array_size, true, false, false);
 	auto b = cuda::host::pinned_buffer<int>(array_size, true, false, false);
@@ -175,7 +174,7 @@ void test() {
 	}
 }
 
-void test_native() {
+void test_native_threaded() {
 	constexpr unsigned int array_size = 12000000;
 	int *a, *b;
 
@@ -189,15 +188,8 @@ void test_native() {
 	int devcount;
 	CU_SAFE_CALL(cuDeviceGetCount(&devcount));
 
-	std::vector<std::thread> threads;
 	for (int i = 0; i < devcount; ++i) {
-		threads.push_back(std::thread(test_device_native, i, a, b, array_size));
-	}
-
-	for (auto &t : threads) {
-		if (t.joinable()) {
-			t.join();
-		}
+		test_device_native(i, a, b, array_size);
 	}
 
 	CUDA_SAFE_CALL(cudaFreeHost(a));
@@ -213,10 +205,10 @@ int main()
 
 	std::cout << "Running benchmark..." << std::endl;
 	auto timer = cpputils::Timer<>();
-	test_native();
-	std::cout << "Native completion time: " << timer.duration<>() << "ms" << std::endl;
+	test_native_threaded();
+	//std::cout << "Native completion time: " << timer.duration<>() << "ms" << std::endl;
 	timer.reset();
-	test();
+	test_threaded();
 	std::cout << "Library completion time: " << timer.duration<>() << "ms" << std::endl;
     return 0;
 }

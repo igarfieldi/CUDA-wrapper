@@ -1,9 +1,13 @@
 cmake_minimum_required(VERSION 3.9 FATAL_ERROR)
 project(CUDA-wrapper LANGUAGES CXX CUDA)
 
-set(DESIRED_CUDA_VERSION 8.0)
-set(ARCHITECTURE "compute_20")
-set(CODE_ARCH "compute_20,sm_20")
+set(DESIRED_CUDA_VERSION 9.1)
+set(ARCHITECTURE "compute_35")
+set(CODE_ARCH "compute_35,sm_35")
+
+# Set the prefix path
+list(APPEND CMAKE_PREFIX_PATH "C:/Program Files/glew")
+list(APPEND CMAKE_PREFIX_PATH "C:/Program Files/GLFW")
 
 # Look for CUDA
 find_package(CUDA ${DESIRED_CUDA_VERSION} EXACT QUIET)
@@ -16,6 +20,12 @@ else(CUDA_FOUND)
 	find_package(CUDA ${DESIRED_CUDA_VERSION} EXACT QUIET REQUIRED)
 	message(STATUS "Found CUDA version " ${CUDA_VERSION} " (manual path)")
 endif()
+
+# Look for OpenGL libs
+find_package(OpenGL REQUIRED)
+find_package(GLEW REQUIRED)
+find_package(glfw3 REQUIRED)
+find_package(glm REQUIRED)
 
 # Set the desired codegen parameters
 string(APPEND CUDA_NVCC_FLAGS " -arch=${ARCHITECTURE} -code=${CODE_ARCH}")
@@ -39,24 +49,32 @@ cuda_add_library(cuda-wrapper STATIC
 	wrapper/driver/version.hpp
 )
 
-# Test executable
+# Test executables
 cuda_add_executable(runtime-test
 	runtime-test/main.cu runtime-test/timer.hpp)
 cuda_add_executable(driver-test
 	driver-test/main.cu)
+cuda_add_executable(ogl-test
+	ogl-test/main.cu)
 	
 target_include_directories(cuda-wrapper PRIVATE wrapper)
 target_include_directories(runtime-test PRIVATE wrapper)
 target_include_directories(driver-test PRIVATE wrapper)
+# Library for OpenGL stuff
+target_include_directories(ogl-test PRIVATE wrapper oglwrap
+			${OPENGL_INCLUDE_DIRS} ${GLU_INCLUDE_DIRS}
+			${GLEW_INCLUDE_DIRS} ${GLFW_INCLUDE_DIRS}
+			${GLM_INCLUDE_DIRS})
 
 # Need at least C++ 11 (will propagate to executables)
 target_compile_features(cuda-wrapper PUBLIC cxx_std_14)
 
 # CUDA files need special compilation
 set_target_properties(cuda-wrapper PROPERTIES CUDA_SEPARABLE_COMPILATION ON)
-set_target_properties(cuda-wrapper PROPERTIES CUDA_PROPAGATE_HOST_FLAGS OFF)
 set_target_properties(runtime-test PROPERTIES CUDA_SEPARABLE_COMPILATION ON)
 set_target_properties(driver-test PROPERTIES CUDA_SEPARABLE_COMPILATION ON)
+set_target_properties(ogl-test PROPERTIES CUDA_SEPARABLE_COMPILATION ON)
 
 target_link_libraries(runtime-test cuda-wrapper cuda cudart)
 target_link_libraries(driver-test cuda-wrapper cuda cudart)
+target_link_libraries(ogl-test cuda-wrapper cuda cudart ${OPENGL_LIBRARIES} ${GLU_LIBRARIES} ${GLEW_LIBRARIES} glfw glm)
