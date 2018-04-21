@@ -26,8 +26,6 @@ The project is currently developed solo, feature requests or suggestions for imp
 
 * **Florian Bethe** - [IGarFieldI](https://github.com/igarfieldi)
 
-See also the list of [contributors](https://github.com/your/project/contributors) who participated in this project.
-
 ## License
 
 This project does not currently have a license - I'll think about something
