@@ -1,9 +1,9 @@
 cmake_minimum_required(VERSION 3.9 FATAL_ERROR)
 project(CUDA-wrapper LANGUAGES CXX CUDA)
 
-set(DESIRED_CUDA_VERSION 9.1)
-set(ARCHITECTURE "compute_35")
-set(CODE_ARCH "compute_35,sm_35")
+set(DESIRED_CUDA_VERSION 8.0)
+set(ARCHITECTURE "compute_20")
+set(CODE_ARCH "compute_20")
 
 # Set the prefix path
 list(APPEND CMAKE_PREFIX_PATH "C:/Program Files/glew")
@@ -28,7 +28,7 @@ find_package(glfw3 REQUIRED)
 find_package(glm REQUIRED)
 
 # Set the desired codegen parameters
-string(APPEND CUDA_NVCC_FLAGS " -arch=${ARCHITECTURE} -code=${CODE_ARCH}")
+list(APPEND CUDA_NVCC_FLAGS "-gencode=arch=${ARCHITECTURE},code=${CODE_ARCH}")
 
 # Actual library
 cuda_add_library(cuda-wrapper STATIC
@@ -47,6 +47,7 @@ cuda_add_library(cuda-wrapper STATIC
 	wrapper/driver/error.hpp
 	wrapper/driver/init.hpp
 	wrapper/driver/version.hpp
+	OPTIONS -gencode=arch=${ARCHITECTURE},code=${CODE_ARCH}
 )
 
 # Test executables
@@ -55,7 +56,7 @@ cuda_add_executable(runtime-test
 cuda_add_executable(driver-test
 	driver-test/main.cu)
 cuda_add_executable(ogl-test
-	ogl-test/main.cu)
+	ogl-test/main.cu ogl-test/timer.hpp ogl-test/surface.hpp)
 	
 target_include_directories(cuda-wrapper PRIVATE wrapper)
 target_include_directories(runtime-test PRIVATE wrapper)
